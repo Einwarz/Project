@@ -6,6 +6,49 @@
 #include <fileapi.h>
 
 namespace fs = std::filesystem;
+HANDLE GetVolumeHandleForFile(const wchar_t* filePath)
+{
+    wchar_t volume_path[MAX_PATH];
+    if (!GetVolumePathName(filePath, volume_path, ARRAYSIZE(volume_path)))
+        return nullptr;
+
+    wchar_t volume_name[MAX_PATH];
+    if (!GetVolumeNameForVolumeMountPoint(volume_path,
+        volume_name, ARRAYSIZE(volume_name)))
+        return nullptr;
+
+    auto length = wcslen(volume_name);
+    if (length && volume_name[length - 1] == L'\\')
+        volume_name[length - 1] = L'\0';
+
+    return CreateFile(volume_name, 0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+}
+
+bool IsFileOnSsd(const wchar_t* file_path)
+{
+    bool is_ssd{ false };
+    HANDLE volume = GetVolumeHandleForFile(file_path);
+    if (volume == INVALID_HANDLE_VALUE)
+    {
+        return false; /*invalid path! throw?*/
+    }
+
+    STORAGE_PROPERTY_QUERY query{};
+    query.PropertyId = StorageDeviceSeekPenaltyProperty;
+    query.QueryType = PropertyStandardQuery;
+    DWORD count;
+    DEVICE_SEEK_PENALTY_DESCRIPTOR result{};
+    if (DeviceIoControl(volume, IOCTL_STORAGE_QUERY_PROPERTY,
+        &query, sizeof(query), &result, sizeof(result), &count, nullptr))
+    {
+        is_ssd = !result.IncursSeekPenalty;
+    }
+    else { /*fails for network path, etc*/ }
+    CloseHandle(volume);
+    return is_ssd;
+}
 
 int main()
 {
@@ -68,7 +111,9 @@ int main()
         break;
 
     default: "Unknown value!\n";
-
     }
+
+    if(IsFileOnSsd(name_drive))
+        std::wcout << "Partition is on A SSD"<< std::endl;
     return 0;
 }
