@@ -4,7 +4,8 @@
 #include <comutil.h>
 #include <wbemcli.h>
 #include <fileapi.h>
-
+#include <winioctl.h>
+#include <fileapi.h>
 namespace fs = std::filesystem;
 HANDLE GetVolumeHandleForFile(const wchar_t* filePath)
 {
@@ -113,7 +114,26 @@ int main()
     default: "Unknown value!\n";
     }
 
-    if(IsFileOnSsd(name_drive))
-        std::wcout << "Partition is on A SSD"<< std::endl;
+    if (IsFileOnSsd(name_drive))
+        std::wcout << "Partition is on A SSD" << std::endl;
+    PARTITION_INFORMATION_EX pinfo;
+    HANDLE fileHandle = GetVolumeHandleForFile(name_drive);
+
+    DeviceIoControl(fileHandle, IOCTL_DISK_GET_PARTITION_INFO_EX, NULL, 0, &pinfo, sizeof(pinfo), NULL, nullptr);
+    switch (pinfo.PartitionStyle) {
+    case 0: std::cout << "Partition type is MBR" << std::endl;
+        break;
+    case 1: std::cout << "Partition type is GPT" << std::endl;
+        break;
+    default: std::cout << "Cannot determine" << std::endl;
+    }
+    //LPCSTR test = name_drive.c_str();
+    //GetVolumeInformation(name_drive.c_str(),)
+    char szVolumeName[256] = { 0 };
+    char szFSName[256] = { 0 };
+    unsigned long dwVolumeSN = 0, dwMaxComponentLen = 0, dwFSFlags = 0;
+    if (!GetVolumeInformationA(Disk_path.c_str(), szVolumeName, 256, &dwVolumeSN,
+        &dwMaxComponentLen, &dwFSFlags, szFSName, 256)) return 0;
+    std::cout <<"Partition format is: " << szFSName << std::endl;
     return 0;
 }
